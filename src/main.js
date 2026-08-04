@@ -1,11 +1,8 @@
-// Using the global Tauri API injected into the page (see
-// "withGlobalTauri": true in tauri.conf.json) instead of npm imports,
-// since this project has no bundler to resolve bare module specifiers.
+
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const appWindow = window.__TAURI__.window.getCurrentWindow();
 
-// ---------- element refs ----------
 const headerLabel = document.getElementById("header-label");
 const headerDate = document.getElementById("header-date");
 
@@ -33,7 +30,6 @@ const themePopover = document.getElementById("theme-popover");
 const popoutBtn = document.getElementById("popout-btn");
 const closeBtn = document.getElementById("close-btn");
 
-// ---------- state ----------
 let allEvents = [];
 let eventsByDay = new Map(); // "YYYY-MM-DD" -> events[]
 let currentView = localStorage.getItem("gcalwidget:view") || "day";
@@ -44,7 +40,6 @@ const VIEW_HEIGHTS = { day: 360, week: 430, month: 480 };
 
 document.documentElement.style.setProperty("--accent", accent);
 
-// ---------- helpers ----------
 function toKey(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -102,13 +97,11 @@ function renderAgendaInto(events, listEl, emptyEl) {
         <p class="event-time">${ev.all_day ? "All day" : `${formatTime(ev.start)} - ${formatTime(ev.end)}`}</p>
       </div>
     `;
-    // Phase 2: open the real event in Google Calendar on click, once
-    // events carry an htmlLink field from the API response.
+
     listEl.appendChild(row);
   }
 }
 
-// ---------- data loading ----------
 async function loadAllEvents() {
   try {
     allEvents = await invoke("get_events");
@@ -128,7 +121,6 @@ async function loadAllEvents() {
   }
 }
 
-// ---------- view renderers ----------
 function renderDayView() {
   const today = new Date();
   headerLabel.textContent = "Today";
@@ -232,7 +224,6 @@ function renderCurrentView() {
   else renderMonthView();
 }
 
-// ---------- view switching ----------
 async function applyViewSize(view) {
   try {
     const { LogicalSize } = window.__TAURI__.dpi;
@@ -257,8 +248,6 @@ tabButtons.forEach((t) => {
   t.addEventListener("click", () => switchView(t.dataset.view));
 });
 
-// Delegated clicks: children are regenerated on every render, but the
-// listener lives on the stable parent so it doesn't need re-attaching.
 weekStripEl.addEventListener("click", (e) => {
   const cell = e.target.closest(".week-day");
   if (!cell) return;
@@ -273,7 +262,6 @@ monthGridEl.addEventListener("click", (e) => {
   renderMonthView();
 });
 
-// ---------- theme accent popover ----------
 let themeOpen = false;
 
 function updateActiveSwatches() {
@@ -310,7 +298,6 @@ themePopover.querySelectorAll(".swatch").forEach((sw) => {
 
 updateActiveSwatches();
 
-// ---------- close / pop-out ----------
 closeBtn.addEventListener("click", () => {
   invoke("hide_widget");
 });
@@ -324,15 +311,13 @@ listen("pinned-changed", (event) => {
   popoutBtn.classList.toggle("active", event.payload);
 });
 
-// ---------- init ----------
 async function init() {
   await loadAllEvents();
-  switchView(currentView); // applies size, tab state, and renders
+  switchView(currentView);
 }
 
 init();
 
-// Refresh on an interval, and whenever the tray menu's "Refresh" fires.
 setInterval(async () => {
   await loadAllEvents();
   renderCurrentView();

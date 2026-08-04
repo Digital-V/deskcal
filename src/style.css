@@ -27,9 +27,6 @@ html, body {
   padding: 16px;
   display: flex;
   flex-direction: column;
-  /* Acrylic is applied natively behind the webview (see main.rs).
-     This translucent fallback keeps things readable if vibrancy
-     fails to apply on an unsupported Windows build. */
   background: rgba(30, 30, 30, 0.35);
   border: 0.5px solid rgba(255, 255, 255, 0.07);
 }
@@ -93,7 +90,6 @@ html, body {
   background: rgba(255, 255, 255, 0.1);
 }
 
-/* Theme accent popover */
 .theme-popover {
   align-items: center;
   gap: 8px;
@@ -161,7 +157,7 @@ html, body {
   margin: 2px 0 10px;
   flex-shrink: 0;
 }
-/* Agenda list, shared by Day / Week / Month */
+
 .event-list {
   display: flex;
   flex-direction: column;
@@ -218,7 +214,7 @@ html, body {
   color: rgba(255, 255, 255, 0.5);
 }
 
-/* Week strip */
+
 .week-strip {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -279,7 +275,7 @@ html, body {
   opacity: 1;
 }
 
-/* Month grid */
+
 .month-header {
   display: flex;
   justify-content: space-between;
@@ -373,7 +369,6 @@ html, body {
   background: #14151a;
 }
 
-/* Thin scrollbar so it doesn't fight the frosted aesthetic */
 .event-list::-webkit-scrollbar {
   width: 4px;
 }

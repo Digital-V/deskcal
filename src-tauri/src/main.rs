@@ -9,10 +9,6 @@ use tauri::{
     Emitter, Manager,
 };
 
-// Tracks whether the widget is currently "popped out" (temporarily forced
-// above other windows so you can interact with it). Default is false: the
-// widget sits at normal window level, so other apps naturally cover it,
-// like a real desktop widget rather than a floating overlay.
 static PINNED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -25,11 +21,6 @@ struct CalendarEvent {
     all_day: bool,
 }
 
-// Phase 1: mock data so the UI is testable before OAuth is wired up.
-// Phase 2: replace this with a real call to Google Calendar's events.list,
-// using the cached token from `get_cached_token` (see auth.rs, not yet created).
-// Dates are computed relative to "today" and spread across ~4 weeks so
-// Week and Month views have something to show, not just Day.
 #[tauri::command]
 fn get_events() -> Vec<CalendarEvent> {
     use chrono::{Duration, Local, NaiveTime};
@@ -89,9 +80,6 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
-// Flips between "docked" (normal window level, other apps can cover it)
-// and "popped out" (temporarily always-on-top so you can click into it).
-// Returns the new pinned state so the frontend can update the button.
 #[tauri::command]
 fn toggle_pop_out(window: tauri::WebviewWindow) -> bool {
     let now_pinned = !PINNED.load(Ordering::SeqCst);
@@ -121,10 +109,6 @@ fn main() {
         .setup(|app| {
             let window = app.get_webview_window("widget").unwrap();
 
-        // Windows only auto-rounds framed windows; borderless ones like ours
-        // default to square corners, which shows as a hard edge behind the
-        // rounded card whenever Acrylic blur is active. Tell DWM to round
-        // the actual window rectangle so it matches the card's CSS radius.
         #[cfg(target_os = "windows")]
         {
             use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE};
@@ -142,9 +126,6 @@ fn main() {
             }
         }
 
-            // Tray icon: left-click shows/restores the widget (the only way
-            // to get it back once hidden, since there's no taskbar icon).
-            // Right-click gives a menu with Pop out / Refresh / Quit.
             let popout = MenuItem::with_id(app, "popout", "Pop out", true, None::<&str>)?;
             let refresh = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
