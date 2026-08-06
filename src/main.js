@@ -1,10 +1,10 @@
-
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const appWindow = window.__TAURI__.window.getCurrentWindow();
 
 const headerLabel = document.getElementById("header-label");
-const headerDate = document.getElementById("header-date");
+const dateTextEl = document.getElementById("date-text");
+const timeTextEl = document.getElementById("time-text");
 
 const dayListEl = document.getElementById("event-list");
 const dayEmptyEl = document.getElementById("empty-state");
@@ -18,6 +18,12 @@ const monthGridEl = document.getElementById("month-grid");
 const monthAgendaEl = document.getElementById("month-agenda");
 const monthEmptyEl = document.getElementById("month-empty");
 
+const yearPopoverEl = document.getElementById("year-popover");
+const yearRangeLabelEl = document.getElementById("year-range-label");
+const yearGridEl = document.getElementById("year-grid");
+const yearPrevDecadeBtn = document.getElementById("year-prev-decade");
+const yearNextDecadeBtn = document.getElementById("year-next-decade");
+
 const panels = {
   day: document.getElementById("day-view"),
   week: document.getElementById("week-view"),
@@ -29,16 +35,50 @@ const themeBtn = document.getElementById("theme-btn");
 const themePopover = document.getElementById("theme-popover");
 const popoutBtn = document.getElementById("popout-btn");
 const closeBtn = document.getElementById("close-btn");
+const todayBtn = document.getElementById("today-btn");
+const formatRowEl = document.getElementById("format-row");
+const densityRowEl = document.getElementById("density-row");
+const cardEl = document.getElementById("card");
+const widgetSizeRowEl = document.getElementById("widgetsize-row");
+const customAccentSwatchEl = document.getElementById("custom-accent-swatch");
+const customAccentInputEl = document.getElementById("custom-accent-input");
 
 let allEvents = [];
 let eventsByDay = new Map(); // "YYYY-MM-DD" -> events[]
 let currentView = localStorage.getItem("gcalwidget:view") || "day";
 let selectedDate = new Date(); // drives Week/Month agenda selection
 let accent = localStorage.getItem("gcalwidget:accent") || "#378ADD";
+let theme = localStorage.getItem("gcalwidget:theme") || "dark";
+let bgOpacity = clampOpacity(parseInt(localStorage.getItem("gcalwidget:opacity"), 10));
+let timeFormat = localStorage.getItem("gcalwidget:timeFormat") || "12h";
+let density = localStorage.getItem("gcalwidget:density") || "standard";
+let widgetSize = localStorage.getItem("gcalwidget:widgetSize") || "standard";
+let yearPickerOpen = false;
+let yearPickerStart = null;
 
-const VIEW_HEIGHTS = { day: 360, week: 430, month: 480 };
+const VALID_THEMES = ["dark", "midnight", "slate", "light", "nord", "forest", "rose", "paper"];
+if (!["12h", "24h"].includes(timeFormat)) timeFormat = "12h";
+if (!["standard", "compact"].includes(density)) density = "standard";
+
+// Widget size controls both window width and the per-view window height.
+const WIDGET_SIZES = {
+  compact: { width: 260, heights: { day: 320, week: 380, month: 420 } },
+  standard: { width: 300, heights: { day: 360, week: 430, month: 480 } },
+  large: { width: 340, heights: { day: 410, week: 490, month: 550 } },
+};
+if (!Object.keys(WIDGET_SIZES).includes(widgetSize)) widgetSize = "standard";
+
+function clampOpacity(val) {
+  if (Number.isNaN(val)) return 35;
+  return Math.min(100, Math.max(15, val));
+}
+
+if (!VALID_THEMES.includes(theme)) theme = "dark";
 
 document.documentElement.style.setProperty("--accent", accent);
+document.documentElement.style.setProperty("--bg-alpha", bgOpacity / 100);
+document.documentElement.setAttribute("data-theme", theme);
+cardEl.classList.toggle("density-compact", density === "compact");
 
 function toKey(d) {
   const y = d.getFullYear();
@@ -59,9 +99,15 @@ function getWeekStart(d) {
   return nd;
 }
 
+function timeFormatOptions() {
+  return timeFormat === "24h"
+    ? { hour: "2-digit", minute: "2-digit", hour12: false }
+    : { hour: "numeric", minute: "2-digit", hour12: true };
+}
+
 function formatTime(iso) {
   const d = new Date(iso);
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return d.toLocaleTimeString([], timeFormatOptions());
 }
 
 function formatRange(start, end) {
@@ -124,7 +170,7 @@ async function loadAllEvents() {
 function renderDayView() {
   const today = new Date();
   headerLabel.textContent = "Today";
-  headerDate.textContent = today.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  dateTextEl.textContent = today.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
   const events = eventsByDay.get(toKey(today)) || [];
   renderAgendaInto(events, dayListEl, dayEmptyEl);
 }
@@ -135,7 +181,7 @@ function renderWeekView() {
   weekEnd.setDate(weekEnd.getDate() + 6);
 
   headerLabel.textContent = "This week";
-  headerDate.textContent = formatRange(weekStart, weekEnd);
+  dateTextEl.textContent = formatRange(weekStart, weekEnd);
 
   const todayKey = toKey(new Date());
   const selectedKey = toKey(selectedDate);
@@ -168,15 +214,22 @@ function renderMonthView() {
   const month = selectedDate.getMonth();
 
   headerLabel.textContent = selectedDate.toLocaleDateString([], { month: "long" });
-  headerDate.textContent = String(year);
+  dateTextEl.textContent = String(year);
 
   monthHeaderEl.innerHTML = `
     <button class="nav-btn" id="month-prev" aria-label="Previous month">\u2039</button>
-    <span class="month-label">${selectedDate.toLocaleDateString([], { month: "long", year: "numeric" })}</span>
+    <button class="month-label" id="month-label-btn">${selectedDate.toLocaleDateString([], { month: "long", year: "numeric" })}</button>
     <button class="nav-btn" id="month-next" aria-label="Next month">\u203a</button>
   `;
   monthHeaderEl.querySelector("#month-prev").addEventListener("click", () => shiftMonth(-1));
   monthHeaderEl.querySelector("#month-next").addEventListener("click", () => shiftMonth(1));
+  monthHeaderEl.querySelector("#month-label-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleYearPicker();
+  });
+
+  yearPopoverEl.style.display = yearPickerOpen ? "flex" : "none";
+  if (yearPickerOpen) renderYearPicker();
 
   const firstOfMonth = new Date(year, month, 1);
   const gridStart = new Date(firstOfMonth);
@@ -214,8 +267,42 @@ function renderMonthView() {
 }
 
 function shiftMonth(delta) {
+  closeYearPicker();
   selectedDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + delta, 1);
   renderMonthView();
+}
+
+function toggleYearPicker() {
+  yearPickerOpen = !yearPickerOpen;
+  if (yearPickerOpen) {
+    yearPickerStart = selectedDate.getFullYear() - 5;
+    renderYearPicker();
+  }
+  yearPopoverEl.style.display = yearPickerOpen ? "flex" : "none";
+}
+
+function closeYearPicker() {
+  if (!yearPickerOpen) return;
+  yearPickerOpen = false;
+  yearPopoverEl.style.display = "none";
+}
+
+function renderYearPicker() {
+  yearRangeLabelEl.textContent = `${yearPickerStart}\u2013${yearPickerStart + 11}`;
+  const currentYear = new Date().getFullYear();
+  const selectedYear = selectedDate.getFullYear();
+
+  yearGridEl.innerHTML = "";
+  for (let i = 0; i < 12; i++) {
+    const y = yearPickerStart + i;
+    const cell = document.createElement("button");
+    cell.className = "year-cell"
+      + (y === currentYear ? " today" : "")
+      + (y === selectedYear ? " selected" : "");
+    cell.textContent = String(y);
+    cell.dataset.year = String(y);
+    yearGridEl.appendChild(cell);
+  }
 }
 
 function renderCurrentView() {
@@ -224,10 +311,23 @@ function renderCurrentView() {
   else renderMonthView();
 }
 
+function goToToday() {
+  selectedDate = new Date();
+  if (currentView === "week") {
+    renderWeekView();
+  } else if (currentView === "month") {
+    closeYearPicker();
+    renderMonthView();
+  }
+}
+
+todayBtn.addEventListener("click", goToToday);
+
 async function applyViewSize(view) {
   try {
     const { LogicalSize } = window.__TAURI__.dpi;
-    await appWindow.setSize(new LogicalSize(300, VIEW_HEIGHTS[view]));
+    const size = WIDGET_SIZES[widgetSize];
+    await appWindow.setSize(new LogicalSize(size.width, size.heights[view]));
   } catch (err) {
     console.error("Failed to resize window for view:", view, err);
   }
@@ -236,6 +336,7 @@ async function applyViewSize(view) {
 function switchView(view) {
   currentView = view;
   localStorage.setItem("gcalwidget:view", view);
+  closeYearPicker();
   for (const [name, el] of Object.entries(panels)) {
     el.style.display = name === view ? "flex" : "none";
   }
@@ -258,16 +359,63 @@ weekStripEl.addEventListener("click", (e) => {
 monthGridEl.addEventListener("click", (e) => {
   const cell = e.target.closest(".month-cell");
   if (!cell || !cell.dataset.date) return;
+  closeYearPicker();
   selectedDate = parseKey(cell.dataset.date);
   renderMonthView();
 });
 
+yearPrevDecadeBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  yearPickerStart -= 12;
+  renderYearPicker();
+});
+
+yearNextDecadeBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  yearPickerStart += 12;
+  renderYearPicker();
+});
+
+yearGridEl.addEventListener("click", (e) => {
+  const cell = e.target.closest(".year-cell");
+  if (!cell) return;
+  const y = parseInt(cell.dataset.year, 10);
+  selectedDate = new Date(y, selectedDate.getMonth(), 1);
+  closeYearPicker();
+  renderMonthView();
+});
+
+yearPopoverEl.addEventListener("click", (e) => e.stopPropagation());
+
 let themeOpen = false;
 
+const themeRowEl = document.getElementById("theme-row");
+const opacitySliderEl = document.getElementById("opacity-slider");
+const opacityValueEl = document.getElementById("opacity-value");
+
+const PRESET_ACCENTS = ["#378ADD", "#1D9E75", "#D85A30", "#D4537E", "#7F77DD", "#BA7517"];
+
 function updateActiveSwatches() {
-  themePopover.querySelectorAll(".swatch").forEach((sw) => {
-    sw.classList.toggle("active", sw.dataset.accent === accent);
+  const isCustomAccent = !PRESET_ACCENTS.includes(accent.toUpperCase());
+  themePopover.querySelectorAll(".swatch:not(.swatch-custom)").forEach((sw) => {
+    sw.classList.toggle("active", sw.dataset.accent === accent.toUpperCase());
   });
+  customAccentSwatchEl.classList.toggle("active", isCustomAccent);
+  if (isCustomAccent) customAccentInputEl.value = accent;
+  themePopover.querySelectorAll(".theme-swatch").forEach((sw) => {
+    sw.classList.toggle("active", sw.dataset.theme === theme);
+  });
+  formatRowEl.querySelectorAll(".segment").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.format === timeFormat);
+  });
+  densityRowEl.querySelectorAll(".segment").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.density === density);
+  });
+  widgetSizeRowEl.querySelectorAll(".segment").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.widgetsize === widgetSize);
+  });
+  opacitySliderEl.value = String(bgOpacity);
+  opacityValueEl.textContent = `${bgOpacity}%`;
 }
 
 themeBtn.addEventListener("click", (e) => {
@@ -283,16 +431,69 @@ document.addEventListener("click", () => {
     themeOpen = false;
     themePopover.style.display = "none";
   }
+  closeYearPicker();
 });
 
-themePopover.querySelectorAll(".swatch").forEach((sw) => {
+themePopover.querySelectorAll(".swatch:not(.swatch-custom)").forEach((sw) => {
   sw.addEventListener("click", () => {
     accent = sw.dataset.accent;
     document.documentElement.style.setProperty("--accent", accent);
     localStorage.setItem("gcalwidget:accent", accent);
     updateActiveSwatches();
-    themeOpen = false;
-    themePopover.style.display = "none";
+  });
+});
+
+customAccentInputEl.addEventListener("input", () => {
+  accent = customAccentInputEl.value.toUpperCase();
+  document.documentElement.style.setProperty("--accent", accent);
+  localStorage.setItem("gcalwidget:accent", accent);
+  updateActiveSwatches();
+});
+
+themeRowEl.querySelectorAll(".theme-swatch").forEach((sw) => {
+  sw.addEventListener("click", () => {
+    theme = sw.dataset.theme;
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("gcalwidget:theme", theme);
+    updateActiveSwatches();
+  });
+});
+
+opacitySliderEl.addEventListener("input", () => {
+  bgOpacity = clampOpacity(parseInt(opacitySliderEl.value, 10));
+  document.documentElement.style.setProperty("--bg-alpha", bgOpacity / 100);
+  opacityValueEl.textContent = `${bgOpacity}%`;
+});
+
+opacitySliderEl.addEventListener("change", () => {
+  localStorage.setItem("gcalwidget:opacity", String(bgOpacity));
+});
+
+formatRowEl.querySelectorAll(".segment").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    timeFormat = btn.dataset.format;
+    localStorage.setItem("gcalwidget:timeFormat", timeFormat);
+    updateActiveSwatches();
+    updateHeaderTime();
+    renderCurrentView();
+  });
+});
+
+densityRowEl.querySelectorAll(".segment").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    density = btn.dataset.density;
+    localStorage.setItem("gcalwidget:density", density);
+    cardEl.classList.toggle("density-compact", density === "compact");
+    updateActiveSwatches();
+  });
+});
+
+widgetSizeRowEl.querySelectorAll(".segment").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    widgetSize = btn.dataset.widgetsize;
+    localStorage.setItem("gcalwidget:widgetSize", widgetSize);
+    updateActiveSwatches();
+    applyViewSize(currentView);
   });
 });
 
@@ -311,12 +512,19 @@ listen("pinned-changed", (event) => {
   popoutBtn.classList.toggle("active", event.payload);
 });
 
+function updateHeaderTime() {
+  timeTextEl.textContent = new Date().toLocaleTimeString([], timeFormatOptions());
+}
+
 async function init() {
   await loadAllEvents();
   switchView(currentView);
+  updateHeaderTime();
 }
 
 init();
+
+setInterval(updateHeaderTime, 15 * 1000);
 
 setInterval(async () => {
   await loadAllEvents();

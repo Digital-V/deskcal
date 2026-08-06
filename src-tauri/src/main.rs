@@ -114,7 +114,7 @@ fn main() {
             use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE};
 
             if let Ok(hwnd) = window.hwnd() {
-                let preference: i32 = 2; // DWMWCP_ROUND
+                let preference: i32 = 1; // DWMWCP_DONOTROUND (sharp corners)
                 unsafe {
                     let _ = DwmSetWindowAttribute(
                         hwnd,
